@@ -129,10 +129,15 @@ class PasswordsApp {
     /// The detail pane masks the password, so it goes through Passwords' Copy Password command,
     /// which only works while Passwords is the active app.
     func password(for login: Login) throws -> String? {
-        _ = try select(login)
+        let window = try select(login)
+        let website = field("WebsiteField", in: window)
         let saved = snapshotPasteboard()
         defer { restorePasteboard(saved) }
-        return try whileActive { try copy(.password) }
+        let password = try whileActive { try copy(.password) }
+        // Copy Password is found by its shortcut. If a Passwords version assigns the shortcuts
+        // differently, this stops the username or website from going out as the password.
+        if let password, !password.isEmpty, [login.username, website].contains(password) { throw PasswordsError.copyFailed }
+        return password
     }
 
     /// Saves a new login through Passwords' own New Password form, out of sight like a password copy.
@@ -208,7 +213,8 @@ class PasswordsApp {
         func paste(_ text: String) {
             pressMenuItem(char: "A", modifiers: 0) // Edit > Select All
             usleep(80_000)
-            NSPasteboard.general.clearContents()
+            // Kept off Universal Clipboard, like every password QuickPass copies.
+            _ = NSPasteboard.general.prepareForNewContents(with: .currentHostOnly)
             NSPasteboard.general.setString(text, forType: .string)
             // Asks clipboard managers not to record it.
             NSPasteboard.general.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))

@@ -542,7 +542,8 @@ final class SearchModel: ObservableObject {
 
     private func putOnClipboard(_ value: String, secret: Bool) {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
+        // Secrets stay on this Mac instead of reaching nearby devices through Universal Clipboard.
+        if secret { _ = pasteboard.prepareForNewContents(with: .currentHostOnly) } else { pasteboard.clearContents() }
         pasteboard.setString(value, forType: .string)
         guard secret else { return }
         // Asks clipboard managers not to record it.

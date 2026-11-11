@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/jessekhach/QuickPass/releases/latest"><img src="https://img.shields.io/github/v/release/jessekhach/QuickPass?label=version" alt="Latest version"></a>
-  <img src="https://img.shields.io/badge/macOS-26%2B-blue" alt="macOS 26 or later">
+  <img src="https://img.shields.io/badge/macOS-15%2B-blue" alt="macOS 15 or later">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/jessekhach/QuickPass" alt="GPLv3 license"></a>
 </p>
 
@@ -90,7 +90,7 @@ All shortcuts for opening QuickPass and copying fields can be changed in Setting
 
 ## Requirements
 
-- macOS 26 or later
+- macOS 15 (Sequoia) or later
 - Apple Passwords with at least one saved login
 - Accessibility permission (QuickPass asks for it on first launch)
 
@@ -131,6 +131,7 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 ## Limitations
 
 - QuickPass depends on the layout of the Passwords app. A macOS update that changes Passwords may break QuickPass until it is updated.
+- QuickPass is developed and tested on macOS 26. The macOS 15 version of Passwords gets less testing, so please open an issue if something fails there.
 - Passwords locks itself shortly after moving to the background, so Touch ID is requested on most uses. The prompt can be moved from opening to first copy in Settings. Usernames are always available without it.
 - Saving a new login takes a few seconds while the Passwords form is filled in. Typing in another app during that time can interfere.
 - Current-site suggestions are not available in Firefox, which does not expose the tab address to other apps.

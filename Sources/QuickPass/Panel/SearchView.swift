@@ -25,7 +25,7 @@ struct SearchView: View {
             }
         }
         .frame(width: 640)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .modifier(CardBackground())
         .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
         .padding(.horizontal, SearchPanel.cardSide)
         .padding(.top, SearchPanel.cardTop)
@@ -58,6 +58,17 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 12)
+        }
+    }
+}
+
+/// Liquid Glass needs macOS 26.
+private struct CardBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 22))
+        } else {
+            content.background(.regularMaterial, in: .rect(cornerRadius: 22))
         }
     }
 }
