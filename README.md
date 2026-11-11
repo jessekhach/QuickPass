@@ -4,7 +4,7 @@
 
 <h1 align="center">QuickPass</h1>
 
-<p align="center">Keyboard-driven quick access for Apple Passwords on macOS.</p>
+<p align="center">Keyboard-driven quick access for Apple Passwords (formerly iCloud Keychain) on macOS.</p>
 
 <p align="center">
   <a href="https://github.com/jessekhach/QuickPass/releases/latest"><img src="https://img.shields.io/github/v/release/jessekhach/QuickPass?label=version" alt="Latest version"></a>
