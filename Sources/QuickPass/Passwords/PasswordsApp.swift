@@ -308,16 +308,24 @@ class PasswordsApp {
         // macOS only lets an app come forward when the active app hands over to it.
         DispatchQueue.main.sync { NSApp.yieldActivation(to: app); _ = app.unhide(); _ = app.activate() }
         defer { DispatchQueue.main.sync { _ = app.hide() } }
-        // Touch ID only shows while Passwords is in front, so once it has stepped back (a click
-        // elsewhere, or Cancel) there is nothing left to wait for. It gets a second to come forward.
+        // Once Passwords has come forward and then stepped back (a click elsewhere, or Cancel),
+        // there is nothing left to wait for. If it never comes forward, its Touch ID prompt can
+        // still show on its own, so wait a while for that before giving up.
+        var wasActive = false
         var inactiveChecks = 0
         for attempt in 0..<240 {
             if list() != nil {
                 waitForListToFill()
                 return true
             }
-            inactiveChecks = app.isActive ? 0 : inactiveChecks + 1
-            if attempt >= 4, inactiveChecks >= 3 { return false }
+            if app.isActive {
+                wasActive = true
+                inactiveChecks = 0
+            } else {
+                inactiveChecks += 1
+            }
+            if wasActive, inactiveChecks >= 3 { return false }
+            if !wasActive, attempt >= 80 { return false }
             usleep(250_000)
         }
         return false
