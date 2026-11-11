@@ -41,12 +41,14 @@ final class SiteIcons: ObservableObject {
         return image
     }
 
-    /// Fetches the icon in the background if it isn't saved yet.
+    /// Fetches the icon in the background if it isn't saved yet. Every disk check happens on the
+    /// background queue, so asking for many at once costs the main thread nothing.
     func request(_ host: String) {
-        guard requested.insert(host).inserted, image(for: host) == nil else { return }
-        let missing = (try? file(host, "none").resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        if let missing, Date().timeIntervalSince(missing) < 7 * 86_400 { return }
+        guard requested.insert(host).inserted, images[host] == nil, saved[host] == nil else { return }
         fetches.addOperation { [self] in
+            if FileManager.default.fileExists(atPath: file(host, "png").path) { return }
+            let missing = (try? file(host, "none").resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+            if let missing, Date().timeIntervalSince(missing) < 7 * 86_400 { return }
             let png = fetchIcon(for: host)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             if let png {
