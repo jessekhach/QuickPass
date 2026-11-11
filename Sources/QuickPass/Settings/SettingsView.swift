@@ -101,7 +101,7 @@ private struct GeneralSettings: View {
                 if model.backfillRunning {
                     VStack(alignment: .leading, spacing: 6) {
                         ProgressView(value: Double(model.websitesKnown), total: Double(max(model.logins.count, 1)))
-                        Text("Passwords may ask for Touch ID again while this runs.")
+                        Text("Keeping Passwords open speeds this up. It may ask for Touch ID again.")
                     }
                 } else if let note = model.backfillNote {
                     Text(note)
