@@ -37,7 +37,7 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.utilities
-        NSHumanReadableCopyright: © 2026 JK Creative Studios LLC. MIT License.
+        NSHumanReadableCopyright: © 2026 JK Creative Studios LLC. Licensed under GPLv3.
         NSAppleEventsUsageDescription: QuickPass reads the address of your browser's current tab to suggest the matching login.
         SUFeedURL: https://raw.githubusercontent.com/jessekhach/QuickPass/main/appcast.xml
         SUPublicEDKey: qHpg4tUVtaunvRYN8A6ShQpiOIG2YDaPzVRvfUIxjig=

@@ -29,7 +29,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>QuickPass reads the address of your browser's current tab to suggest the matching login.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 JK Creative Studios LLC. MIT License.</string>
+	<string>© 2026 JK Creative Studios LLC. Licensed under GPLv3.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

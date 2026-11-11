@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/jessekhach/QuickPass/releases/latest"><img src="https://img.shields.io/github/v/release/jessekhach/QuickPass?label=version" alt="Latest version"></a>
   <img src="https://img.shields.io/badge/macOS-26%2B-blue" alt="macOS 26 or later">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/jessekhach/QuickPass" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/jessekhach/QuickPass" alt="GPLv3 license"></a>
 </p>
 
 <p align="center">
@@ -173,4 +173,4 @@ QuickPass is free, and if it saves you time you can [sponsor it on GitHub](https
 
 ## License
 
-QuickPass is released under the [MIT License](LICENSE). The passphrase word list is the [EFF Large Wordlist](https://www.eff.org/dice) by the Electronic Frontier Foundation, used under [CC BY 3.0 US](https://creativecommons.org/licenses/by/3.0/us/).
+QuickPass is released under the [GNU General Public License v3.0](LICENSE): you can use, change and share it, and any copy you share has to stay open source under the same license. The passphrase word list is the [EFF Large Wordlist](https://www.eff.org/dice) by the Electronic Frontier Foundation, used under [CC BY 3.0 US](https://creativecommons.org/licenses/by/3.0/us/).
