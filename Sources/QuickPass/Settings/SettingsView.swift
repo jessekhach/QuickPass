@@ -128,7 +128,7 @@ private struct PrivacySettings: View {
                     Text("After 90 seconds").tag(90)
                     Text("Never").tag(0)
                 }
-                Picker("Remember last search", selection: $preferences.rememberSearchFor) {
+                Picker("Remember search and passwords", selection: $preferences.rememberSearchFor) {
                     Text("Off").tag(0)
                     Text("30 seconds").tag(30)
                     Text("2 minutes").tag(120)

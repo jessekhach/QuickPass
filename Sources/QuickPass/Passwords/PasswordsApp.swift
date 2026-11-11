@@ -34,16 +34,19 @@ class PasswordsApp {
     /// Passwords' window is tucked behind it while QuickPass works in Passwords. Called on the main thread.
     var hidingSpot: () -> CGRect? = { nil }
 
-    /// What the list shows in place of a missing username ("no user name" in English). Read from
-    /// Apple's own strings in the system language, since Accessibility doesn't mark it as a placeholder.
-    private static let noUsernameLabel: String = {
-        let fallback = "no user name"
+    /// What the list shows in place of a missing username. Accessibility doesn't mark it as a placeholder.
+    private static let noUsernameLabel = appleString("no user name (label)", fallback: "no user name")
+    private static let revealPasswordLabel = appleString("Reveal Password", fallback: "Reveal Password")
+
+    /// One of Passwords' own strings in the system language, so matching what Passwords shows
+    /// works in any language.
+    private static func appleString(_ key: String, fallback: String) -> String {
         guard let bundle = Bundle(path: "/System/Library/PrivateFrameworks/PasswordManagerUI.framework"),
               let language = Bundle.preferredLocalizations(from: bundle.localizations, forPreferences: Locale.preferredLanguages).first,
               let path = bundle.path(forResource: "Localizable", ofType: "strings", inDirectory: nil, forLocalization: language),
               let strings = NSDictionary(contentsOfFile: path) as? [String: String] else { return fallback }
-        return strings["no user name (label)"] ?? fallback
-    }()
+        return strings[key] ?? fallback
+    }
 
     private var app: NSRunningApplication? {
         NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first
@@ -52,7 +55,9 @@ class PasswordsApp {
     // MARK: - Reading
 
     /// Every login in the "All" list, marked with whether it has a 2FA code. nil while locked.
-    func loadLogins() -> [Login]? {
+    /// Filling blank rows brings Passwords forward for a moment, so without fillBlanks a list with
+    /// blank rows comes back nil.
+    func loadLogins(fillBlanks: Bool = true) -> [Login]? {
         prepare()
         guard list() != nil else { return nil }
         clearSearch()
@@ -62,6 +67,7 @@ class PasswordsApp {
         // An empty read means the list hadn't drawn yet. Saving it would wipe the cache.
         guard !logins.isEmpty else { return nil }
         if logins.contains(where: { $0.title.isEmpty }) {
+            guard fillBlanks else { return nil }
             fillBlankRows()
             logins = rows().enumerated().map { login(of: $1, at: $0) }
         }
@@ -126,10 +132,12 @@ class PasswordsApp {
         }
     }
 
-    /// The detail pane masks the password, so it goes through Passwords' Copy Password command,
-    /// which only works while Passwords is the active app.
+    /// Read with Passwords' own Reveal Password, which works while Passwords stays hidden and keeps
+    /// the password off the clipboard. A Passwords without it falls back to Copy Password, which
+    /// puts the password on the clipboard and only works while Passwords is the active app.
     func password(for login: Login) throws -> String? {
         let window = try select(login)
+        if let password = revealPassword(in: window) { return password }
         let website = field("WebsiteField", in: window)
         let saved = snapshotPasteboard()
         defer { restorePasteboard(saved) }
@@ -138,6 +146,22 @@ class PasswordsApp {
         // differently, this stops the username or website from going out as the password.
         if let password, !password.isEmpty, [login.username, website].contains(password) { throw PasswordsError.copyFailed }
         return password
+    }
+
+    /// Shows the password in the detail pane and reads it. It stays shown until the selection
+    /// changes, and running Reveal again doesn't hide it, so the selection is cleared afterwards.
+    private func revealPassword(in window: AXUIElement) -> String? {
+        guard let field = formElement("PasswordField", in: window),
+              let masked = value(field, kAXValueAttribute) as? String,
+              let reveal = actionNames(field).first(where: { $0.hasPrefix("Name:\(Self.revealPasswordLabel)") }) else { return nil }
+        AXUIElementPerformAction(field, reveal as CFString)
+        defer { if let list = list() { AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [] as CFArray) } }
+        for _ in 0..<40 {
+            if let shown = formElement("PasswordField", in: window).flatMap({ value($0, kAXValueAttribute) as? String }),
+               shown != masked { return shown }
+            usleep(25_000)
+        }
+        return nil
     }
 
     /// Saves a new login through Passwords' own New Password form, out of sight like a password copy.
@@ -233,7 +257,7 @@ class PasswordsApp {
         return value(focused as! AXUIElement, kAXIdentifierAttribute) as? String
     }
 
-    /// An element of the New Password form by identifier. Skips the list, which holds thousands of rows.
+    /// An element by identifier, such as a New Password form field. Skips the list, which holds thousands of rows.
     private func formElement(_ identifier: String, in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
         guard depth < 12 else { return nil }
         for child in children(element) where role(child) != kAXOutlineRole {
@@ -304,6 +328,8 @@ class PasswordsApp {
         prepare()
         return list() == nil
     }
+
+    var isRunning: Bool { app != nil }
 
     /// Passwords shows its Touch ID prompt by itself when its locked window comes forward.
     /// Moving the window or pressing its unlock button while the prompt is up cancels Touch ID,
@@ -702,6 +728,12 @@ class PasswordsApp {
 
     private func role(_ element: AXUIElement) -> String? {
         value(element, kAXRoleAttribute) as? String
+    }
+
+    private func actionNames(_ element: AXUIElement) -> [String] {
+        var names: CFArray?
+        AXUIElementCopyActionNames(element, &names)
+        return names as? [String] ?? []
     }
 
     private func element(in root: AXUIElement, identifier: String, depth: Int = 0) -> AXUIElement? {

@@ -37,7 +37,7 @@ final class DemoPasswords: PasswordsApp {
         entries.first { $0.title == login.title && $0.username == login.username }
     }
 
-    override func loadLogins() -> [Login]? {
+    override func loadLogins(fillBlanks: Bool = true) -> [Login]? {
         entries.enumerated().map { Login(title: $1.title, username: $1.username, index: $0, hasCode: $1.hasCode) }
     }
 

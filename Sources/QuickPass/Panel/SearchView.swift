@@ -5,6 +5,7 @@ struct SearchView: View {
     @ObservedObject var preferences: Preferences
     /// Runs a detail view row: Return or a double-click.
     let activate: (DetailItem) -> Void
+    let unlock: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -20,7 +21,7 @@ struct SearchView: View {
                 if model.detail, let login = model.selectedLogin {
                     DetailView(model: model, preferences: preferences, login: login, activate: activate)
                 } else {
-                    ResultsList(model: model, preferences: preferences)
+                    ResultsList(model: model, preferences: preferences, unlock: unlock)
                 }
             }
         }
@@ -76,6 +77,7 @@ private struct CardBackground: ViewModifier {
 private struct ResultsList: View {
     @ObservedObject var model: SearchModel
     @ObservedObject var preferences: Preferences
+    let unlock: () -> Void
     private let rowHeight: CGFloat = 50
     private let maxVisibleRows = 7
 
@@ -97,12 +99,19 @@ private struct ResultsList: View {
                     if !results.isEmpty {
                         Divider().padding(.horizontal, 6).padding(.vertical, 4)
                     }
-                    CreateRow(query: model.query, selected: model.isOnCreateRow)
-                        .frame(height: createRowHeight)
-                        // Its own kind of id: sharing the rows' numbers made SwiftUI mix it up with a
-                        // row whenever the number of results changed.
-                        .id(Self.createRowID)
-                        .onTapGesture { model.selection = results.count }
+                    if model.waitingForUnlock {
+                        UnlockRow()
+                            .frame(height: createRowHeight)
+                            .id(Self.createRowID)
+                            .onTapGesture(perform: unlock)
+                    } else {
+                        CreateRow(query: model.query, selected: model.isOnCreateRow)
+                            .frame(height: createRowHeight)
+                            // Its own kind of id: sharing the rows' numbers made SwiftUI mix it up with a
+                            // row whenever the number of results changed.
+                            .id(Self.createRowID)
+                            .onTapGesture { model.selection = results.count }
+                    }
                 }
                 .padding(6)
             }
@@ -147,6 +156,26 @@ private struct CreateRow: View {
         .padding(.horizontal, 10)
         .frame(maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.22) : .clear))
+        .contentShape(Rectangle())
+    }
+}
+
+/// Takes the Create row's place while Passwords is locked and the list is hidden.
+private struct UnlockRow: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30)
+            Text("Unlock Passwords")
+                .font(.system(size: 14))
+            Spacer(minLength: 8)
+            Chip(icon: "touchid", label: "↩")
+        }
+        .padding(.horizontal, 10)
+        .frame(maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.22)))
         .contentShape(Rectangle())
     }
 }

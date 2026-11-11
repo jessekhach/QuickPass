@@ -40,7 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel = SearchPanel(rootView: SearchView(model: model, preferences: preferences,
-                                                 activate: { [unowned self] item in activate(item) }))
+                                                 activate: { [unowned self] item in activate(item) },
+                                                 unlock: { [unowned self] in unlock() }))
         panel.delegate = self
         model.onUnlock = { [weak self] in self?.hidePanelOncePasswordsInFront() }
         model.passwordsHidingSpot = { [weak self] in self?.searchCardFrame() }
@@ -50,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             self?.lastClickAway = Date()
+        }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            self?.lockNow()
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.lockNow()
         }
 
         setUpStatusItem()
@@ -141,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         statusItem.button?.image = MenuBarIcon.image
         let menu = NSMenu()
         menu.addItem(withTitle: "Open QuickPass", action: #selector(openFromMenu), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Lock Now", action: #selector(lockNow), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Reload Logins", action: #selector(reloadLogins), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
@@ -191,6 +199,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc private func reloadLogins() { model.refresh(unlock: true) }
 
+    /// Forgets fetched passwords and quits Passwords if it's only open for QuickPass, which locks
+    /// it, so the next visit needs Touch ID. Also runs when the screen locks or the Mac sleeps.
+    @objc private func lockNow() {
+        if panel.isVisible { close(restoringFocus: false) }
+        model.lock()
+        model.quitPasswordsIfIdle(onlyIfLocked: false)
+    }
+
     @objc private func checkForUpdates() { updater.checkForUpdates() }
 
     @objc private func showSettings() {
@@ -214,13 +230,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Touch ID up front, so copying, details and fill don't stop for it later. It has to come
         // after the panel: macOS only lets the active app bring Passwords forward, and QuickPass
         // becomes active by showing it.
-        if preferences.unlockOnOpen {
-            let opened = Date()
-            model.unlockIfNeeded { [weak self] outcome in
-                guard let self, outcome != .notNeeded else { return }
-                // Touch ID stops when the user clicks elsewhere, and then they've moved on.
-                if outcome == .failed, clickedAway(since: opened) { close(restoringFocus: false) } else { returnToPanel() }
-            }
+        if preferences.unlockOnOpen { unlock() }
+    }
+
+    private func unlock() {
+        let started = Date()
+        model.unlockIfNeeded { [weak self] outcome in
+            guard let self, outcome != .notNeeded else { return }
+            // Touch ID stops when the user clicks elsewhere, and then they've moved on.
+            if outcome == .failed, clickedAway(since: started) { close(restoringFocus: false) } else { returnToPanel() }
         }
     }
 
@@ -369,6 +387,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return nil
         }
         switch (Int(event.keyCode), modifiers) {
+        case (kVK_Return, []) where model.waitingForUnlock:
+            unlock()
         case (kVK_Escape, []):
             if model.detail { model.detail = false } else { close(restoringFocus: true) }
         case (kVK_LeftArrow, []) where model.detail:

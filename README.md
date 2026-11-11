@@ -42,7 +42,8 @@ It puts a global shortcut on Apple Passwords. Press ⌃⌥Space from any app, se
 - **Save new logins.** A short form creates the login in Apple Passwords and copies the new password for the sign-up form.
 - **Website icons.** Each login shows its site's icon, fetched from the site itself. A scan in Settings or the welcome window finds the website for every login, and can be stopped and resumed.
 - **Edit and delete.** Open any login in the Passwords app, or delete it with a confirmation step.
-- **Touch ID.** Unlocking is handled by Apple Passwords. QuickPass asks for Touch ID as it opens when Passwords is locked.
+- **Touch ID.** Unlocking is handled by Apple Passwords. QuickPass asks for Touch ID as it opens when Passwords is locked, and shows your logins once it unlocks.
+- **Lock Now.** The menu bar menu forgets fetched passwords and locks Passwords. This also happens when the screen locks or the Mac sleeps.
 - **Automatic updates** through Sparkle.
 
 ## Screenshots
@@ -112,9 +113,9 @@ On first launch, a welcome window walks through granting Accessibility access an
 
 Apple Passwords has no public API. QuickPass reads and controls the Passwords app through the macOS Accessibility API, the same interface used by screen readers.
 
-- **Titles and usernames** are read from the Passwords list and cached locally so search works before Touch ID.
+- **Titles and usernames** are read from the Passwords list and cached locally, so search is instant.
 - **Websites and verification codes** are read from the Passwords detail view while Passwords stays hidden.
-- **Passwords** are copied with Passwords' own Copy Password command. Passwords only allows this while it is the active app, so it is activated for a fraction of a second with its window placed behind the QuickPass search bar.
+- **Passwords** are read from the detail view with Passwords' own Reveal Password, while Passwords stays hidden, and masked again right after, so they never go through the clipboard. If Passwords doesn't offer Reveal Password, QuickPass falls back to its Copy Password command, which puts the password on the clipboard for a fraction of a second and only works while Passwords is the active app.
 - **New logins and deletions** go through Passwords' own New Password form and Delete command. When saving, QuickPass fills the form field by field, reads every field back, and only saves when all of them match.
 - **Unlocking** uses the Touch ID prompt from Passwords itself.
 - **The Passwords app** is quit once it locks again, so it does not stay in the Dock. This can be changed in Settings.
@@ -123,7 +124,8 @@ Apple Passwords has no public API. QuickPass reads and controls the Passwords ap
 
 - QuickPass never writes passwords or verification codes to disk.
 - The local cache in `~/Library/Application Support/QuickPass` contains titles, usernames and websites only, and is readable only by the current user.
-- Passwords and codes fetched from Passwords are held in memory for up to two minutes, so one Touch ID covers a whole login, then discarded.
+- Passwords and codes fetched from Passwords are held in memory for up to two minutes, so one Touch ID covers a whole login, then discarded. They're also discarded when the screen locks, the Mac sleeps, or you choose Lock Now.
+- While Passwords is locked, the search bar doesn't show your logins. With Unlock on open turned off in Settings, it shows them from the local cache before Touch ID.
 - Copied passwords and codes are marked as concealed so clipboard managers skip them, and are cleared from the clipboard after 60 seconds by default.
 - QuickPass makes two kinds of network request: the daily update check against this repository, and website icons, which come straight from each site rather than an icon service, so no third party sees which sites you have logins for. Icons can be turned off in Settings.
 - Updates are verified with an EdDSA signature in addition to Apple notarization.
@@ -134,7 +136,7 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 - QuickPass depends on the layout of the Passwords app. A macOS update that changes Passwords may break QuickPass until it is updated.
 - QuickPass is developed and tested on macOS 26. The macOS 15 version of Passwords gets less testing, so please open an issue if something fails there.
-- Passwords locks itself shortly after moving to the background, so Touch ID is requested on most uses. The prompt can be moved from opening to first copy in Settings. Usernames are always available without it.
+- Passwords locks itself shortly after moving to the background, so Touch ID is requested on most uses. The prompt can be moved from opening to first copy in Settings, which also shows your logins before Touch ID.
 - Saving a new login takes a few seconds while the Passwords form is filled in. Typing in another app during that time can interfere.
 - Current-site suggestions are not available in Firefox, which does not expose the tab address to other apps.
 

@@ -48,6 +48,11 @@ final class SearchModel: ObservableObject {
     private let backfillStop = OSAllocatedUnfairLock(initialState: false)
     private var usage: [String: Int]
     private var pending = 0 { didSet { busy = pending > 0 } }
+    /// Fields being fetched right now, by login. A repeat press during a fetch is dropped, since
+    /// the first one finishes the job and every extra fetch goes back to Passwords.
+    private var fetching: [Login: Set<Field>] = [:]
+    /// With Unlock on open, the list stays hidden until Passwords has unlocked.
+    @Published private(set) var waitingForUnlock = false
     private var lastUsed = Date.distantPast
     /// When the list was last read from Passwords. Touched only on the Passwords queue.
     private var lastLoaded = Date.distantPast
@@ -93,6 +98,7 @@ final class SearchModel: ObservableObject {
     /// Title prefix matches first, then title matches, then username matches. Within each group,
     /// the logins used most come first.
     var results: [Login] {
+        guard !waitingForUnlock else { return [] }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let ranked: [(login: Login, rank: Int)] = q.isEmpty ? logins.map { ($0, 0) } : logins.compactMap { login in
             let title = login.title.lowercased()
@@ -141,6 +147,7 @@ final class SearchModel: ObservableObject {
     /// Starts fresh unless the panel was used recently. A fresh start searches for the browser
     /// tab's site when there's a login for it.
     func willOpen(suggesting site: String?) {
+        waitingForUnlock = false
         if Date().timeIntervalSince(lastUsed) > TimeInterval(preferences.rememberSearchFor) {
             forget()
             query = ""
@@ -165,6 +172,15 @@ final class SearchModel: ObservableObject {
             guard let self, Date().timeIntervalSince(self.lastUsed) > rememberFor else { return }
             self.forget()
         }
+        // Picks up logins added or removed in Passwords. Done after closing because a reload takes
+        // several seconds, and a copy queued behind it would wait.
+        queue.async { if self.passwords.isRunning { self.reloadIfStale(fillBlanks: false) } }
+    }
+
+    /// Forgets fetched passwords and codes and the last search, so the next visit starts over.
+    func lock() {
+        forget()
+        lastUsed = .distantPast
     }
 
     // MARK: - Navigation
@@ -295,7 +311,7 @@ final class SearchModel: ObservableObject {
             // Pick up the new login so it's searchable right away.
             if case .success = result {
                 self.lastLoaded = .distantPast
-                self.reloadIfStale()
+                self.reloadIfStale(fillBlanks: true)
             }
         }
     }
@@ -397,6 +413,8 @@ final class SearchModel: ObservableObject {
     func unlockIfNeeded(done: @escaping (UnlockOutcome) -> Void) {
         guard !busy else { done(.notNeeded); return }
         pending += 1
+        waitingForUnlock = true
+        status = nil
         queue.async {
             var outcome = UnlockOutcome.notNeeded
             if self.passwords.isLocked {
@@ -406,9 +424,9 @@ final class SearchModel: ObservableObject {
             DispatchQueue.main.async {
                 self.pending -= 1
                 self.usingPasswords = false
+                self.waitingForUnlock = outcome == .failed
                 done(outcome)
             }
-            if outcome == .unlocked { self.reloadIfStale() }
         }
     }
 
@@ -429,6 +447,7 @@ final class SearchModel: ObservableObject {
             DispatchQueue.main.async {
                 self.pending -= 1
                 self.usingPasswords = false
+                self.waitingForUnlock = false
                 if let list { self.update(list) }
                 done()
             }
@@ -450,6 +469,8 @@ final class SearchModel: ObservableObject {
     /// Username comes from the cached list. Website and code come from Passwords' detail pane
     /// while it stays hidden. Only the password needs Passwords brought forward for a moment.
     private func load(_ fields: [Field], for login: Login, allowUnlock: Bool, completion: @escaping (Bool) -> Void) {
+        guard !Set(fields).isSubset(of: fetching[login] ?? []) else { return }
+        fetching[login, default: []].formUnion(fields)
         pending += 1
         if fields.contains(.password) { usingPasswords = true }
         if allowUnlock { status = nil }
@@ -473,6 +494,7 @@ final class SearchModel: ObservableObject {
             DispatchQueue.main.async {
                 self.pending -= 1
                 self.usingPasswords = false
+                self.fetching[login]?.subtract(fields)
                 switch result {
                 case .success(let values):
                     var h = self.held[login] ?? Held()
@@ -489,15 +511,13 @@ final class SearchModel: ObservableObject {
                     completion(false)
                 }
             }
-            if unlocked { self.reloadIfStale() }
         }
     }
 
-    /// Picks up logins added or removed in Passwords. Runs right after an unlock, when the list
-    /// is readable, but at most every 15 minutes: a reload takes a few seconds, and anything
-    /// queued behind it would wait.
-    private func reloadIfStale() {
-        guard Date().timeIntervalSince(lastLoaded) > 15 * 60, let fresh = passwords.loadLogins() else { return }
+    /// Picks up logins added or removed in Passwords, at most every 15 minutes, since a reload
+    /// takes a few seconds and anything queued behind it waits.
+    private func reloadIfStale(fillBlanks: Bool) {
+        guard Date().timeIntervalSince(lastLoaded) > 15 * 60, let fresh = passwords.loadLogins(fillBlanks: fillBlanks) else { return }
         lastLoaded = Date()
         DispatchQueue.main.async { self.update(fresh) }
     }
