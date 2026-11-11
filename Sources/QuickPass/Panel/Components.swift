@@ -29,7 +29,7 @@ struct LoginIcon: View {
 
     var body: some View {
         Group {
-            if preferences.showSiteIcons, let host, let image = icons.images[host] {
+            if preferences.showSiteIcons, let host, let image = icons.image(for: host) {
                 // On white so dark logos and transparent ones read the same in dark mode.
                 Image(nsImage: image)
                     .resizable()

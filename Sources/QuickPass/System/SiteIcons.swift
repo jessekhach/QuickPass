@@ -7,6 +7,10 @@ final class SiteIcons: ObservableObject {
     @Published private(set) var images: [String: NSImage] = [:]
 
     private var requested: Set<String> = []
+    /// Saved icons already read from disk, kept out of `images` so reading one while a row draws
+    /// doesn't trigger another redraw.
+    private var saved: [String: NSImage] = [:]
+    private var notSaved: Set<String> = []
     private let fetches: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 4
@@ -23,13 +27,23 @@ final class SiteIcons: ObservableObject {
         return URLSession(configuration: config)
     }()
 
-    /// Shows the cached icon, or fetches it in the background.
-    func request(_ host: String) {
-        guard requested.insert(host).inserted else { return }
-        if let image = NSImage(contentsOf: file(host, "png")) {
-            images[host] = image
-            return
+    /// The icon to draw right now: one fetched this session, or the saved copy read straight from
+    /// disk. Reading it here, as the row is first drawn, means a saved icon never pops in after
+    /// the letter.
+    func image(for host: String) -> NSImage? {
+        if let image = images[host] ?? saved[host] { return image }
+        guard !notSaved.contains(host) else { return nil }
+        guard let image = NSImage(contentsOf: file(host, "png")) else {
+            notSaved.insert(host)
+            return nil
         }
+        saved[host] = image
+        return image
+    }
+
+    /// Fetches the icon in the background if it isn't saved yet.
+    func request(_ host: String) {
+        guard requested.insert(host).inserted, image(for: host) == nil else { return }
         let missing = (try? file(host, "none").resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         if let missing, Date().timeIntervalSince(missing) < 7 * 86_400 { return }
         fetches.addOperation { [self] in
