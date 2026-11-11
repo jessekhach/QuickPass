@@ -99,7 +99,10 @@ private struct GeneralSettings: View {
                 Text("Website icons")
             } footer: {
                 if model.backfillRunning {
-                    ProgressView(value: Double(model.websitesKnown), total: Double(max(model.logins.count, 1)))
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(value: Double(model.websitesKnown), total: Double(max(model.logins.count, 1)))
+                        Text("Passwords may ask for Touch ID again while this runs.")
+                    }
                 } else if let note = model.backfillNote {
                     Text(note)
                 }
@@ -109,7 +112,7 @@ private struct GeneralSettings: View {
         .formStyle(.grouped)
         .scrollDisabled(true)
         // The footer under Website icons adds a line while the scan runs or after it stops early.
-        .frame(width: 480, height: model.backfillRunning || model.backfillNote != nil ? 486 : 458)
+        .frame(width: 480, height: model.backfillRunning ? 506 : model.backfillNote != nil ? 486 : 458)
     }
 }
 

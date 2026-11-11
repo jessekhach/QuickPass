@@ -605,7 +605,12 @@ final class SearchModel: ObservableObject {
                 DispatchQueue.main.sync { self.usingPasswords = true; self.onUnlock?() }
                 let unlocked = self.passwords.unlock()
                 DispatchQueue.main.sync { self.usingPasswords = false }
-                if unlocked { result = Result(catching: read) }
+                // Right after an unlock Passwords can take a moment to show its list again.
+                for _ in 0..<4 where unlocked {
+                    result = Result(catching: read)
+                    guard case .failure(let error) = result, error as? PasswordsError == .locked else { break }
+                    usleep(500_000)
+                }
             }
             DispatchQueue.main.async {
                 self.saveWebsites()

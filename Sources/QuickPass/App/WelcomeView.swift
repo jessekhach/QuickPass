@@ -43,7 +43,9 @@ struct WelcomeView: View {
                 }
                 Divider().padding(.leading, 52)
                 Step(number: 3, title: "Show website icons",
-                     detail: model.backfillRunning || model.websitesKnown > 0
+                     detail: model.backfillRunning
+                        ? "\(model.websitesKnown.formatted()) of \(model.logins.count.formatted()) logins checked. Passwords may ask for Touch ID again while this runs."
+                        : model.websitesKnown > 0
                         ? "\(model.websitesKnown.formatted()) of \(model.logins.count.formatted()) logins checked. Optional, and you can stop any time."
                         : "QuickPass reads each login's website from Passwords and gets the icon from that site. Optional.",
                      done: !model.logins.isEmpty && model.websitesKnown == model.logins.count) {
