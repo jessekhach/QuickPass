@@ -84,6 +84,8 @@ final class SearchModel: ObservableObject {
         if let data = try? Data(contentsOf: Self.websitesURL), let saved = try? JSONDecoder().decode([String: String].self, from: data) {
             websites = saved
         }
+        // Websites read by an earlier scan may not have their icons yet.
+        DispatchQueue.main.async { self.logins.forEach(self.fetchIcon) }
     }
 
     // MARK: - What the panel shows
@@ -569,6 +571,13 @@ final class SearchModel: ObservableObject {
         SiteIcons.host(website: websites[login.key], title: login.title)
     }
 
+    /// Downloads a login's icon now rather than when its row first scrolls into view. Saved
+    /// icons are skipped, so this costs nothing for logins that already have one.
+    private func fetchIcon(for login: Login) {
+        guard preferences.showSiteIcons, let host = iconHost(for: login) else { return }
+        icons.request(host)
+    }
+
     /// How many of the current logins have had their website read.
     var websitesKnown: Int { logins.filter { websites[$0.key] != nil }.count }
 
@@ -596,7 +605,12 @@ final class SearchModel: ObservableObject {
             let read = {
                 try self.passwords.websites(of: batch, fillBlanks: first,
                                             stop: { self.backfillStop.withLock { $0 } },
-                                            found: { login, site in DispatchQueue.main.async { self.websites[login.key] = site } })
+                                            found: { login, site in
+                                                DispatchQueue.main.async {
+                                                    self.websites[login.key] = site
+                                                    self.fetchIcon(for: login)
+                                                }
+                                            })
             }
             var result = Result(catching: read)
             // Passwords locks itself after a few minutes in the background, which a full scan can
