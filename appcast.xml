@@ -10,7 +10,7 @@
             <sparkle:version>2</sparkle:version>
             <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.1/QuickPass-0.1.1.dmg" length="2884172" type="application/octet-stream" sparkle:edSignature="9CWlbY0pqVH4C1laPSXNnQMz51AeVK2dEwmPXN4QwjNBv1LK85LTx3jnRvTy0av2xiJn0drWHHBOeqmSPQAVDw=="/>
+            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.1/QuickPass-0.1.1.dmg" length="2884320" type="application/octet-stream" sparkle:edSignature="K1iJnaaHbMvBGLEOiD/ADpIOQuBZcasNetJukh3P0mEnBv2N+osD9tYMrWcZr4gTccIdWQjnDG/GghiYRJnHBw=="/>
         </item>
         <item>
             <title>0.1.0</title>

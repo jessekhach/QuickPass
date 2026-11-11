@@ -427,10 +427,20 @@ class PasswordsApp {
     /// Passwords fills in list rows as its window lays out. Rows that load while it's hidden, as
     /// right after an unlock, can stay blank. Bringing it forward off-screen for a moment lets
     /// them fill in.
+    /// Blank rows can be anywhere in the list, so this waits on the ones that were blank, not just
+    /// the last row.
     private func fillBlankRows() {
-        guard let app, let last = rows().last, texts(in: last, depth: 0).first?.isEmpty ?? true else { return }
-        let parked = activateParked(app) { !(self.rows().last.map { self.texts(in: $0, depth: 0).first?.isEmpty ?? true } ?? true) }
+        let blank = rows().enumerated().filter { isBlank($1) }.map(\.offset)
+        guard let app, !blank.isEmpty else { return }
+        let parked = activateParked(app) {
+            let rows = self.rows()
+            return blank.allSatisfy { rows.indices.contains($0) && !self.isBlank(rows[$0]) }
+        }
         restore(app, parked)
+    }
+
+    private func isBlank(_ row: AXUIElement) -> Bool {
+        texts(in: row, depth: 0).first?.isEmpty ?? true
     }
 
     /// Switches the list with a sidebar tile ("AllTile", "CodesTile"). Works while hidden.

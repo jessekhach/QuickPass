@@ -589,7 +589,8 @@ final class SearchModel: ObservableObject {
 
     /// Batches let a copy or fill run between them instead of waiting for the whole scan.
     private func backfillBatch(first: Bool) {
-        let batch = Array(logins.filter { websites[$0.key] == nil }.prefix(20))
+        // A row Passwords never drew has no title to match, so it can't be read.
+        let batch = Array(logins.filter { websites[$0.key] == nil && !$0.title.isEmpty }.prefix(20))
         guard !batch.isEmpty else { backfillRunning = false; return }
         queue.async {
             let read = {
