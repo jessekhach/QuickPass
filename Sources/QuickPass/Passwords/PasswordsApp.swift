@@ -68,6 +68,8 @@ class PasswordsApp {
         show("CodesTile")
         let withCodes = Set(rows().compactMap(codeEntry).map { Login(title: $0.title, username: $0.username, index: 0, hasCode: true) })
         show("AllTile")
+        // Passwords can lock partway through, and then the reads above come back empty.
+        guard !logins.isEmpty, list() != nil else { return nil }
         for i in logins.indices where withCodes.contains(logins[i]) { logins[i].hasCode = true }
         return logins
     }
