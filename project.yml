@@ -1,0 +1,53 @@
+name: QuickPass
+options:
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.10.1"
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: Y7M2354XJ8
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    DEAD_CODE_STRIPPING: YES
+targets:
+  QuickPass:
+    type: application
+    platform: macOS
+    dependencies:
+      - package: Sparkle
+    sources:
+      - Sources/QuickPass
+      - path: Resources/Assets.xcassets
+      - path: Resources/eff_large_wordlist.txt
+        buildPhase: resources
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleName: QuickPass
+        CFBundleDisplayName: QuickPass
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.utilities
+        NSHumanReadableCopyright: © 2026 JK Creative Studios LLC. MIT License.
+        NSAppleEventsUsageDescription: QuickPass reads the address of your browser's current tab to suggest the matching login.
+        SUFeedURL: https://raw.githubusercontent.com/jessekhach/QuickPass/main/appcast.xml
+        SUPublicEDKey: qHpg4tUVtaunvRYN8A6ShQpiOIG2YDaPzVRvfUIxjig=
+        SUEnableAutomaticChecks: true
+    entitlements:
+      path: Resources/QuickPass.entitlements
+      properties:
+        com.apple.security.automation.apple-events: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jkcreativestudios.quickpass
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_IDENTITY: Apple Development

@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>QuickPass</title>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Wed, 11 Nov 2026 09:43:57 -0500</pubDate>
+            <link>https://github.com/jessekhach/QuickPass</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/jessekhach/QuickPass/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.0/QuickPass-0.1.0.dmg" length="2883696" type="application/octet-stream" sparkle:edSignature="GWr/qos1Uv+twDIiE8N9j3kQmlwl5TycPrjcVM/qg+YgOsWG1NvFN2uocqUP+TO67QKO7Vkc5r+RHWUABuUuDQ=="/>
+        </item>
+    </channel>
+</rss>
