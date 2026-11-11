@@ -598,7 +598,9 @@ final class SearchModel: ObservableObject {
                                             found: { login, site in DispatchQueue.main.async { self.websites[login.key] = site } })
             }
             var result = Result(catching: read)
-            if first, case .failure(let error) = result, error as? PasswordsError == .locked {
+            // Passwords locks itself after a few minutes in the background, which a full scan can
+            // outlast. Ask for Touch ID and keep going rather than stopping.
+            if case .failure(let error) = result, error as? PasswordsError == .locked {
                 DispatchQueue.main.sync { self.usingPasswords = true; self.onUnlock?() }
                 let unlocked = self.passwords.unlock()
                 DispatchQueue.main.sync { self.usingPasswords = false }
@@ -618,7 +620,7 @@ final class SearchModel: ObservableObject {
                 case .failure(let error):
                     self.backfillRunning = false
                     self.backfillNote = error as? PasswordsError == .locked
-                        ? "Stopped because Passwords locked. Start again to continue."
+                        ? "Stopped because Passwords locked. Press Continue to unlock it and pick up where it stopped."
                         : error.localizedDescription
                 }
             }

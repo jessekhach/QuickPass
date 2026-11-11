@@ -95,11 +95,22 @@ class PasswordsApp {
         // Rows that loaded while Passwords was hidden can be blank. Filling them brings Passwords
         // forward for a moment, so the caller asks for it once per scan.
         if fillBlanks { fillBlankRows() }
-        for login in logins where !stop() {
-            guard let row = find(login), let list = list() else {
-                if list() == nil { throw PasswordsError.locked }
-                continue
+        // A login usually sits at its saved row. When rows have moved, read the whole list once
+        // for the batch instead of once per login.
+        var rowsByLogin: [Login: AXUIElement]?
+        func row(for login: Login) -> AXUIElement? {
+            let rows = rows()
+            if rows.indices.contains(login.index), self.login(of: rows[login.index], at: login.index) == login {
+                return rows[login.index]
             }
+            if rowsByLogin == nil {
+                rowsByLogin = Dictionary(rows.enumerated().map { (self.login(of: $1, at: $0), $1) }, uniquingKeysWith: { first, _ in first })
+            }
+            return rowsByLogin?[login]
+        }
+        for login in logins where !stop() {
+            guard let list = list() else { throw PasswordsError.locked }
+            guard let row = row(for: login) else { continue }
             AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [row] as CFArray)
             // Same short wait as select(), so the previous login's pane isn't read for this one.
             usleep(80_000)
