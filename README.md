@@ -16,6 +16,8 @@
   <a href="https://github.com/jessekhach/QuickPass/releases/latest"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
   <code>brew install jessekhach/tap/quickpass</code>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/sponsors/jessekhach">Sponsor</a>
 </p>
 
 <p align="center">
