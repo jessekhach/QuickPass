@@ -12,25 +12,5 @@
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.2/QuickPass-0.1.2.dmg" length="2895342" type="application/octet-stream" sparkle:edSignature="3zd7gGuvj14QAgCsqs+sO/9+1KVymQVyMRQodKloKdvNyPUjTX+rznYMqcqIG16KDDsf9YpJLbe18qqr8+x7Cg=="/>
         </item>
-        <item>
-            <title>0.1.1</title>
-            <pubDate>Wed, 11 Nov 2026 10:10:28 -0500</pubDate>
-            <link>https://github.com/jessekhach/QuickPass</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/jessekhach/QuickPass/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.1/QuickPass-0.1.1.dmg" length="2893093" type="application/octet-stream" sparkle:edSignature="PLLvPnVgZIzHlJImVvH3JQteOO9GUG/rdWAopk5dXn1Z97kl3wx+NTKhPtGirPf5+IlWQIAh/I+e4uRjL0WyDA=="/>
-        </item>
-        <item>
-            <title>0.1.0</title>
-            <pubDate>Wed, 11 Nov 2026 09:43:57 -0500</pubDate>
-            <link>https://github.com/jessekhach/QuickPass</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/jessekhach/QuickPass/releases</sparkle:fullReleaseNotesLink>
-            <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.0/QuickPass-0.1.0.dmg" length="2883696" type="application/octet-stream" sparkle:edSignature="GWr/qos1Uv+twDIiE8N9j3kQmlwl5TycPrjcVM/qg+YgOsWG1NvFN2uocqUP+TO67QKO7Vkc5r+RHWUABuUuDQ=="/>
-        </item>
     </channel>
 </rss>
