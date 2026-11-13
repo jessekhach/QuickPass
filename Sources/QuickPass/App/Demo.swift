@@ -41,10 +41,19 @@ final class DemoPasswords: PasswordsApp {
         entries.enumerated().map { Login(title: $1.title, username: $1.username, index: $0, hasCode: $1.hasCode) }
     }
 
-    override func details(for login: Login) throws -> [Field: String] {
+    override func logins(from start: Int, max: Int, fillBlanks: Bool) -> (logins: [Login], total: Int)? {
+        let all = loadLogins() ?? []
+        return (Array(all.dropFirst(start).prefix(max)), all.count)
+    }
+
+    override func loginsWithCodes() -> Set<Login>? { Set((loadLogins() ?? []).filter(\.hasCode)) }
+    override var isRunning: Bool { true }
+
+    override func details(for login: Login, copyPassword: Bool) throws -> [Field: String] {
         guard let entry = entry(login) else { throw PasswordsError.notFound }
         var out: [Field: String] = [.website: entry.website]
         if entry.hasCode { out[.code] = code(for: entry.title) }
+        out[.password] = password(for: login)
         return out
     }
 
@@ -54,7 +63,7 @@ final class DemoPasswords: PasswordsApp {
         }
     }
 
-    override func password(for login: Login) throws -> String? {
+    private func password(for login: Login) -> String {
         let words = ["Cobalt", "Harbor", "Tundra", "Maple", "Quartz", "Ember", "Willow", "Nimbus", "Saffron", "Juniper"]
         let n = seed(login.title)
         return "\(words[n % 10])-\(words[(n / 10) % 10].lowercased())-\(words[(n / 100) % 10].lowercased())-\(n % 90 + 10)"

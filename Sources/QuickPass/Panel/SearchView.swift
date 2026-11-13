@@ -224,6 +224,17 @@ private struct LoginRow: View {
 /// A thin animated bar along the bottom of the search field while QuickPass is waiting on Passwords.
 struct LoadingBar: View {
     let active: Bool
+
+    var body: some View {
+        // The moving bar is only in the view while loading. Hidden with opacity, its endless
+        // animation kept SwiftUI redrawing all the time, about 6% CPU with the panel closed.
+        ZStack { if active { MovingBar().transition(.opacity) } }
+            .frame(height: 2)
+            .animation(.easeOut(duration: 0.2), value: active)
+    }
+}
+
+private struct MovingBar: View {
     @State private var offset: CGFloat = -1
 
     var body: some View {
@@ -236,8 +247,6 @@ struct LoadingBar: View {
         .frame(height: 2)
         .clipped()
         .padding(.horizontal, 14)
-        .opacity(active ? 1 : 0)
-        .animation(.easeOut(duration: 0.2), value: active)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { offset = 0.7 }
         }

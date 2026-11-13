@@ -1,5 +1,10 @@
 import AppKit
 import ApplicationServices
+import os
+
+/// Why a step in Passwords failed. Never logs passwords or login details.
+/// Watch with: log stream --predicate 'subsystem == "com.jkcreativestudios.quickpass"'
+private let log = Logger(subsystem: "com.jkcreativestudios.quickpass", category: "Passwords")
 
 enum PasswordsError: LocalizedError {
     case locked, unlockFailed, notFound, copyFailed, saveFailed, deleteFailed, notSureWhichLogin
@@ -71,24 +76,57 @@ class PasswordsApp {
             fillBlankRows()
             logins = rows().enumerated().map { login(of: $1, at: $0) }
         }
-        show("CodesTile")
-        let withCodes = Set(rows().compactMap(codeEntry).map { Login(title: $0.title, username: $0.username, index: 0, hasCode: true) })
-        show("AllTile")
-        // Passwords can lock partway through, and then the reads above come back empty.
-        guard !logins.isEmpty, list() != nil else { return nil }
+        guard !logins.isEmpty, let withCodes = loginsWithCodes() else { return nil }
         for i in logins.indices where withCodes.contains(logins[i]) { logins[i].hasCode = true }
         return logins
     }
 
-    /// Website and current 2FA code, read from the detail pane while Passwords stays hidden.
-    func details(for login: Login) throws -> [Field: String] {
+    /// Up to `max` rows of the All list from row `start`, and how many rows the list has. Reading
+    /// the whole list takes seconds, so background reloads read it in pieces and other work runs
+    /// in between. nil while locked, or when a row is blank and `fillBlanks` is off.
+    func logins(from start: Int, max: Int, fillBlanks: Bool) -> (logins: [Login], total: Int)? {
+        prepare()
+        guard list() != nil else { return nil }
+        clearSearch()
+        if start == 0 { shownTile = nil }
+        show("AllTile")
+        var rows = rows()
+        func piece() -> [Login] { rows.indices.dropFirst(start).prefix(max).map { login(of: rows[$0], at: $0) } }
+        var logins = piece()
+        // An empty read means the list hadn't drawn yet.
+        guard !rows.isEmpty else { return nil }
+        if logins.contains(where: { $0.title.isEmpty }) {
+            guard fillBlanks else { return nil }
+            fillBlankRows()
+            rows = self.rows()
+            logins = piece()
+        }
+        return (logins, rows.count)
+    }
+
+    /// The logins listed under Codes. nil if Passwords locked while reading, since the reads
+    /// then come back empty.
+    func loginsWithCodes() -> Set<Login>? {
+        show("CodesTile")
+        let withCodes = Set(rows().compactMap(codeEntry).map { Login(title: $0.title, username: $0.username, index: 0, hasCode: true) })
+        show("AllTile")
+        return list() != nil ? withCodes : nil
+    }
+
+    /// Website, current 2FA code and the password if Passwords reveals it, all read in one visit to
+    /// the login's detail pane while Passwords stays hidden. Each visit waits about half a second
+    /// for the pane. `copyPassword` falls back to Copy Password, which brings Passwords forward and
+    /// takes a few seconds, so it's only for an actual password copy.
+    func details(for login: Login, copyPassword: Bool) throws -> [Field: String] {
         let window = try select(login)
         var out: [Field: String] = [:]
         if let site = field("WebsiteField", in: window), !site.isEmpty { out[.website] = site }
-        if login.hasCode {
-            let code = field("VerificationCodeField", in: window)?.filter(\.isNumber) ?? ""
-            out[.code] = code.isEmpty ? try codeFromList(for: login) : code
-        }
+        let code = login.hasCode ? field("VerificationCodeField", in: window)?.filter(\.isNumber) ?? "" : ""
+        if !code.isEmpty { out[.code] = code }
+        // Revealing clears the selection afterwards, so it comes after the pane's other fields.
+        out[.password] = try copyPassword ? password(in: window, for: login, website: out[.website]) : revealPassword(in: window)
+        // Switching to the Codes list moves away from the login, so it comes last.
+        if login.hasCode, code.isEmpty { out[.code] = try codeFromList(for: login) }
         return out
     }
 
@@ -135,10 +173,8 @@ class PasswordsApp {
     /// Read with Passwords' own Reveal Password, which works while Passwords stays hidden and keeps
     /// the password off the clipboard. A Passwords without it falls back to Copy Password, which
     /// puts the password on the clipboard and only works while Passwords is the active app.
-    func password(for login: Login) throws -> String? {
-        let window = try select(login)
+    private func password(in window: AXUIElement, for login: Login, website: String?) throws -> String? {
         if let password = revealPassword(in: window) { return password }
-        let website = field("WebsiteField", in: window)
         let saved = snapshotPasteboard()
         defer { restorePasteboard(saved) }
         let password = try whileActive { try copy(.password) }
@@ -179,12 +215,16 @@ class PasswordsApp {
         let parked = activateParked(app) { self.value(root, kAXFrontmostAttribute) as? Bool == true }
         defer { restore(app, parked) }
 
+        log.notice("create: Passwords frontmost \(self.value(root, kAXFrontmostAttribute) as? Bool == true, privacy: .public)")
         pressMenuItem(char: "N", modifiers: 0) // File > New Password… (⌘N)
         func formField(_ identifier: String) -> AXUIElement? {
             windows().lazy.compactMap { self.formElement(identifier, in: $0) }.first
         }
         for _ in 0..<40 where formField("SaveButton") == nil { usleep(50_000) }
-        guard let save = formField("SaveButton") else { throw PasswordsError.saveFailed }
+        guard let save = formField("SaveButton") else {
+            log.error("create: the New Password form didn't open")
+            throw PasswordsError.saveFailed
+        }
         var saved = false
         defer {
             if !saved, let cancel = formField("CancelButton") { AXUIElementPerformAction(cancel, kAXPressAction as CFString) }
@@ -200,7 +240,10 @@ class PasswordsApp {
                 Keyboard.pressTab()
                 usleep(60_000)
             }
-            guard focusedIdentifier(in: root) == identifier else { throw PasswordsError.saveFailed }
+            guard focusedIdentifier(in: root) == identifier else {
+                log.error("create: Tab never reached \(identifier, privacy: .public), focus is on \(self.focusedIdentifier(in: root) ?? "nothing", privacy: .public)")
+                throw PasswordsError.saveFailed
+            }
         }
         func text(_ identifier: String) -> String { formField(identifier).flatMap { value($0, kAXValueAttribute) as? String } ?? "" }
         let title = login.title.trimmingCharacters(in: .whitespaces)
@@ -218,18 +261,23 @@ class PasswordsApp {
 
         // The password field shows one dot per character, so its length is all that can be compared.
         guard text("TitleField") == title, text("WebsiteTextField") == website, text("UserNameTextField") == login.username,
-              text("PasswordTextField").count == login.password.count else { throw PasswordsError.saveFailed }
+              text("PasswordTextField").count == login.password.count else {
+            log.error("create: read back didn't match. title \(text("TitleField") == title, privacy: .public), website \(text("WebsiteTextField") == website, privacy: .public), username \(text("UserNameTextField") == login.username, privacy: .public), password length \(text("PasswordTextField").count == login.password.count, privacy: .public)")
+            throw PasswordsError.saveFailed
+        }
 
         AXUIElementPerformAction(save, kAXPressAction as CFString)
         for _ in 0..<40 {
             if formField("SaveButton") == nil { saved = true; return }
             usleep(50_000)
         }
+        log.error("create: the form was still open 2 s after Save")
         throw PasswordsError.saveFailed
     }
 
-    /// Password fields ignore synthetic typing, so the password goes in with Passwords' own Edit menu:
-    /// Select All, then Paste. A one-character paste comes first, so the length check afterwards
+    /// The password goes in by pasting, Select All then ⌘V. Paste is pressed as a keystroke because
+    /// Passwords on macOS 27 reports its Paste menu item as disabled to Accessibility, so pressing
+    /// the menu item does nothing. A one-character paste comes first, so the length check afterwards
     /// can't pass by coincidence with Passwords' own suggestion still in the field.
     private func pastePassword(_ password: String, into field: () -> String) throws {
         let saved = snapshotPasteboard()
@@ -242,13 +290,21 @@ class PasswordsApp {
             NSPasteboard.general.setString(text, forType: .string)
             // Asks clipboard managers not to record it.
             NSPasteboard.general.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType"))
-            pressMenuItem(char: "V", modifiers: 0) // Edit > Paste
+            Keyboard.pressCommand("v")
             usleep(200_000)
         }
         paste("x")
-        guard field().count == 1 else { throw PasswordsError.saveFailed }
+        let first = field().count
+        guard first == 1 else {
+            log.error("create: test paste left \(first, privacy: .public) characters in the password field, not 1")
+            throw PasswordsError.saveFailed
+        }
         paste(password)
-        guard field().count == password.count else { throw PasswordsError.saveFailed }
+        let pasted = field().count
+        guard pasted == password.count else {
+            log.error("create: password field has \(pasted, privacy: .public) characters after paste, expected \(password.count, privacy: .public)")
+            throw PasswordsError.saveFailed
+        }
     }
 
     /// The identifier of the element that has the keyboard in Passwords, such as "WebsiteTextField".
@@ -271,10 +327,13 @@ class PasswordsApp {
     /// Stricter than other actions: the detail pane has to show this login's username as well as
     /// its title, or nothing happens.
     func delete(_ login: Login) throws {
+        log.notice("delete: start")
         let window = try select(login)
         if !login.username.isEmpty, field("UserNameField", in: window) != login.username {
             throw PasswordsError.notSureWhichLogin
         }
+        guard let at = find(login)?.index else { throw PasswordsError.notFound }
+        let count = rows().count
         try whileActive {
             // Delete only applies to the list's selection, and stays disabled while the search
             // field has focus.
@@ -284,10 +343,23 @@ class PasswordsApp {
             AXUIElementPerformAction(delete, kAXPressAction as CFString)
             try confirmDeletePrompt()
         }
+        // Gone once the list is a row shorter and the login isn't at its row or the one above,
+        // where it would sit if a different row had gone. Looking through every row takes seconds.
         for _ in 0..<40 {
-            if find(login) == nil { return }
+            let rows = rows()
+            if rows.count == count - 1,
+               ![at - 1, at].contains(where: { rows.indices.contains($0) && self.login(of: rows[$0], at: $0) == login }) {
+                log.notice("delete: done, confirmed from the row count")
+                return
+            }
             usleep(50_000)
         }
+        // The count can be off if Passwords added or removed another login meanwhile.
+        if find(login) == nil {
+            log.notice("delete: done, confirmed by reading the whole list")
+            return
+        }
+        log.error("delete: the login was still listed afterwards")
         throw PasswordsError.deleteFailed
     }
 
@@ -478,8 +550,14 @@ class PasswordsApp {
     /// Switches the list with a sidebar tile ("AllTile", "CodesTile"). Works while hidden.
     private func show(_ tile: String) {
         guard shownTile != tile, let sidebar = outlines().first, let button = element(in: sidebar, identifier: tile) else { return }
-        AXUIElementPerformAction(button, kAXPressAction as CFString)
-        usleep(400_000)
+        if value(button, kAXSelectedAttribute) as? Bool != true {
+            func titles() -> [String] { windows().compactMap { value($0, kAXTitleAttribute) as? String } }
+            let before = titles()
+            AXUIElementPerformAction(button, kAXPressAction as CFString)
+            // The window title names the list and its count ("Codes – 47 Items") and changes along
+            // with the rows, about 150 ms after the press.
+            for _ in 0..<40 where titles() == before { usleep(10_000) }
+        }
         shownTile = tile
     }
 
@@ -491,12 +569,12 @@ class PasswordsApp {
         guard list() != nil else { throw PasswordsError.locked }
         clearSearch()
         show("AllTile")
-        var row = find(login)
+        var row = find(login)?.row
         if row == nil {
             shownTile = nil
             show("AllTile")
             fillBlankRows()
-            row = find(login)
+            row = find(login)?.row
         }
         guard let row, let list = list() else { throw PasswordsError.notFound }
         AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [row] as CFArray)
@@ -511,12 +589,14 @@ class PasswordsApp {
         throw PasswordsError.notFound
     }
 
-    private func find(_ login: Login) -> AXUIElement? {
+    /// The login's row and row number. Adding or removing a login moves the rows below it, usually
+    /// by a few, so this reads outward from the saved position. Reading the whole list takes seconds.
+    private func find(_ login: Login) -> (row: AXUIElement, index: Int)? {
         let rows = rows()
-        if rows.indices.contains(login.index), self.login(of: rows[login.index], at: login.index) == login {
-            return rows[login.index]
-        }
-        return rows.enumerated().first { self.login(of: $1, at: $0) == login }?.element
+        let index = rows.indices
+            .sorted { abs($0 - login.index) < abs($1 - login.index) }
+            .first { self.login(of: rows[$0], at: $0) == login }
+        return index.map { (rows[$0], $0) }
     }
 
     /// Rows in the All list read [title, username].

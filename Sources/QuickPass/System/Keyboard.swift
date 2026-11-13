@@ -29,6 +29,32 @@ enum Keyboard {
         press(kVK_Tab, flags: [])
     }
 
+    /// ⌘ plus a letter. The key is looked up in the keyboard layout, since the same key types a
+    /// different letter in other layouts (on AZERTY, QWERTY's A key is Q, and ⌘Q quits).
+    static func pressCommand(_ letter: Character) {
+        // The layout can only be read on the main thread. Elsewhere macOS stops the app.
+        let code = Thread.isMainThread ? keyCode(for: letter) : DispatchQueue.main.sync { keyCode(for: letter) }
+        guard let code else { return }
+        press(code, flags: .maskCommand)
+    }
+
+    /// Shortcuts use the ASCII-capable layout, the one macOS falls back to under layouts like Russian.
+    private static func keyCode(for letter: Character) -> Int? {
+        guard let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let data = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData),
+              let bytes = CFDataGetBytePtr(unsafeBitCast(data, to: CFData.self)) else { return nil }
+        return bytes.withMemoryRebound(to: UCKeyboardLayout.self, capacity: 1) { layout in
+            (0..<128).first { code in
+                var deadKeys: UInt32 = 0
+                var length = 0
+                var chars = [UniChar](repeating: 0, count: 4)
+                UCKeyTranslate(layout, UInt16(code), UInt16(kUCKeyActionDown), 0, UInt32(LMGetKbdType()),
+                               OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeys, chars.count, &length, &chars)
+                return length == 1 && UnicodeScalar(chars[0]).map(Character.init) == letter
+            }
+        }
+    }
+
     private static func press(_ key: Int, flags: CGEventFlags) {
         for keyDown in [true, false] {
             let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: keyDown)

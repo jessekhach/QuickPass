@@ -56,6 +56,15 @@ final class SearchModel: ObservableObject {
     private var lastUsed = Date.distantPast
     /// When the list was last read from Passwords. Touched only on the Passwords queue.
     private var lastLoaded = Date.distantPast
+    /// A background reload's progress: whether one is running, the rows read so far, and the
+    /// list's row count when it started. Touched only on the Passwords queue.
+    private var reloading = false
+    /// Bumped by each new reload, so pieces left queued by a stopped one do nothing.
+    private var reloadRun = 0
+    private var reloadRead: [Login] = []
+    private var reloadTotal = 0
+    /// A quit asked for while a reload runs, done when it ends. Touched only on the Passwords queue.
+    private var quitAfterReload: Bool?
     private var codeTimer: Timer?
     private var lastCodeAttempt = Date.distantPast
     private let passwords: PasswordsApp
@@ -162,6 +171,10 @@ final class SearchModel: ObservableObject {
         status = nil
         opens += 1
         if detail { startCodeTimer() }
+        // Passwords stays unlocked while the panel is in use. The next close asks again.
+        queue.async { self.quitAfterReload = nil }
+        // Later than the first copy, which would otherwise wait for the reload's first piece.
+        queue.asyncAfter(deadline: .now() + 2) { self.reloadIfStale(fillBlanks: false) }
     }
 
     func didClose() {
@@ -172,15 +185,15 @@ final class SearchModel: ObservableObject {
             guard let self, Date().timeIntervalSince(self.lastUsed) > rememberFor else { return }
             self.forget()
         }
-        // Picks up logins added or removed in Passwords. Done after closing because a reload takes
-        // several seconds, and a copy queued behind it would wait.
-        queue.async { if self.passwords.isRunning { self.reloadIfStale(fillBlanks: false) } }
+        queue.async { self.reloadIfStale(fillBlanks: false) }
     }
 
     /// Forgets fetched passwords and codes and the last search, so the next visit starts over.
+    /// Stops a reload, so Passwords can quit and lock right away.
     func lock() {
         forget()
         lastUsed = .distantPast
+        queue.async { self.reloading = false; self.quitAfterReload = nil }
     }
 
     // MARK: - Navigation
@@ -210,8 +223,8 @@ final class SearchModel: ObservableObject {
         detailSelection = max(0, min(items(for: login).count - 1, detailSelection + delta))
     }
 
-    /// Website and code come from Passwords' detail pane without bringing it forward. The
-    /// password stays as dots until it's copied, since fetching it means activating Passwords.
+    /// Website, code and password come from Passwords' detail pane without bringing it forward,
+    /// in one visit, so copying any of them afterwards is instant. The password stays as dots.
     /// Calls done when anything it had to fetch has arrived, which may have taken Touch ID.
     func openDetail(done: @escaping () -> Void) {
         guard let login = selectedLogin else { return }
@@ -311,6 +324,7 @@ final class SearchModel: ObservableObject {
             // Pick up the new login so it's searchable right away.
             if case .success = result {
                 self.lastLoaded = .distantPast
+                // A reload already running starts over on its own, since the list grew a row.
                 self.reloadIfStale(fillBlanks: true)
             }
         }
@@ -431,8 +445,15 @@ final class SearchModel: ObservableObject {
     }
 
     /// Queued behind any Passwords work still in progress, so a copy or fill always finishes first.
+    /// A reload that's partway through finishes first too.
     func quitPasswordsIfIdle(onlyIfLocked: Bool) {
-        queue.async { self.passwords.quitIfIdle(onlyIfLocked: onlyIfLocked) }
+        queue.async {
+            guard !self.reloading else {
+                self.quitAfterReload = (self.quitAfterReload ?? true) && onlyIfLocked
+                return
+            }
+            self.passwords.quitIfIdle(onlyIfLocked: onlyIfLocked)
+        }
     }
 
     func refresh(unlock: Bool, done: @escaping () -> Void = {}) {
@@ -466,23 +487,22 @@ final class SearchModel: ObservableObject {
         }
     }
 
-    /// Username comes from the cached list. Website and code come from Passwords' detail pane
-    /// while it stays hidden. Only the password needs Passwords brought forward for a moment.
-    private func load(_ fields: [Field], for login: Login, allowUnlock: Bool, completion: @escaping (Bool) -> Void) {
-        guard !Set(fields).isSubset(of: fetching[login] ?? []) else { return }
+    /// Username comes from the cached list. The rest comes from Passwords' detail pane while it
+    /// stays hidden. Each visit to a login waits about half a second for the pane, so a visit
+    /// also picks up whatever else is missing: the website, the code and, if Passwords reveals it,
+    /// the password.
+    private func load(_ requested: [Field], for login: Login, allowUnlock: Bool, completion: @escaping (Bool) -> Void) {
+        var fields = Set(requested)
+        if held[login]?.fetched.contains(.website) != true { fields.insert(.website) }
+        if login.hasCode, !codeIsFresh(for: login) { fields.insert(.code) }
+        if held[login]?.fetched.contains(.password) != true { fields.insert(.password) }
+        guard !fields.isSubset(of: fetching[login] ?? []) else { return }
         fetching[login, default: []].formUnion(fields)
         pending += 1
-        if fields.contains(.password) { usingPasswords = true }
+        if requested.contains(.password) { usingPasswords = true }
         if allowUnlock { status = nil }
-        let work = { () throws -> [Field: String] in
-            var out: [Field: String] = [:]
-            if fields.contains(.website) || fields.contains(.code) {
-                let details = try self.passwords.details(for: login)
-                for field in [Field.website, .code] where fields.contains(field) { out[field] = details[field] }
-            }
-            if fields.contains(.password) { out[.password] = try self.passwords.password(for: login) }
-            return out
-        }
+        // The password fallback for a login Passwords won't reveal takes seconds, so it's only for a copy.
+        let work = { try self.passwords.details(for: login, copyPassword: requested.contains(.password)) }
         queue.async {
             var result = Result { try work() }
             var unlocked = false
@@ -500,7 +520,8 @@ final class SearchModel: ObservableObject {
                     var h = self.held[login] ?? Held()
                     for field in fields {
                         h.values[field] = values[field]
-                        h.fetched.insert(field)
+                        // A missing password means try again on copy, not "nothing saved".
+                        if field != .password || values[field] != nil { h.fetched.insert(field) }
                     }
                     if fields.contains(.code) { h.codeAt = Date() }
                     self.held[login] = h
@@ -514,12 +535,50 @@ final class SearchModel: ObservableObject {
         }
     }
 
-    /// Picks up logins added or removed in Passwords, at most every 15 minutes, since a reload
-    /// takes a few seconds and anything queued behind it waits.
+    /// Picks up changes made in Passwords, at most every 15 minutes and only while Passwords is
+    /// running. Runs on the Passwords queue.
     private func reloadIfStale(fillBlanks: Bool) {
-        guard Date().timeIntervalSince(lastLoaded) > 15 * 60, let fresh = passwords.loadLogins(fillBlanks: fillBlanks) else { return }
+        guard !reloading, Date().timeIntervalSince(lastLoaded) > 15 * 60, passwords.isRunning else { return }
+        reloading = true
+        reloadRun += 1
+        reloadPiece(run: reloadRun, fillBlanks: fillBlanks)
+    }
+
+    /// Reading every row takes seconds, so the reload reads 100 rows per turn on the queue and a
+    /// copy or delete waits for one piece at most. A reload that stops keeps what it read and
+    /// carries on from there next time. The list is only replaced once every row is read.
+    private func reloadPiece(run: Int, fillBlanks: Bool) {
+        guard reloading, run == reloadRun else { return }
+        guard passwords.isRunning,
+              let piece = passwords.logins(from: reloadRead.count, max: 100, fillBlanks: fillBlanks) else { return endReload() }
+        if reloadRead.isEmpty {
+            reloadTotal = piece.total
+        } else if piece.total != reloadTotal {
+            // A login was added or removed, so the rows read so far may have moved.
+            reloadRead = []
+            queue.async { self.reloadPiece(run: run, fillBlanks: fillBlanks) }
+            return
+        }
+        reloadRead += piece.logins
+        if reloadRead.count < reloadTotal {
+            queue.async { self.reloadPiece(run: run, fillBlanks: fillBlanks) }
+            return
+        }
+        guard let withCodes = passwords.loginsWithCodes() else { return endReload() }
+        var fresh = reloadRead
+        for i in fresh.indices where withCodes.contains(fresh[i]) { fresh[i].hasCode = true }
+        reloadRead = []
         lastLoaded = Date()
         DispatchQueue.main.async { self.update(fresh) }
+        endReload()
+    }
+
+    private func endReload() {
+        reloading = false
+        if let onlyIfLocked = quitAfterReload {
+            quitAfterReload = nil
+            passwords.quitIfIdle(onlyIfLocked: onlyIfLocked)
+        }
     }
 
     /// Keeps the code in the detail view current. Never asks for Touch ID on its own.
