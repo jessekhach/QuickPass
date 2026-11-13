@@ -3,6 +3,16 @@
     <channel>
         <title>QuickPass</title>
         <item>
+            <title>0.1.5</title>
+            <pubDate>Thu, 12 Nov 2026 19:53:46 -0500</pubDate>
+            <link>https://github.com/jessekhach/QuickPass</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/jessekhach/QuickPass/releases</sparkle:fullReleaseNotesLink>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jessekhach/QuickPass/releases/download/v0.1.5/QuickPass-0.1.5.dmg" length="2949314" type="application/octet-stream" sparkle:edSignature="3bY7u5rx7pzwx2cp9ehlpgSHBniImR8FWxFpYFUpZpkNilnDV2y7bRzmJoTvsV6faksut5cCsV9OwxE8AYc5AQ=="/>
+        </item>
+        <item>
             <title>0.1.4</title>
             <pubDate>Wed, 11 Nov 2026 13:04:22 -0500</pubDate>
             <link>https://github.com/jessekhach/QuickPass</link>
