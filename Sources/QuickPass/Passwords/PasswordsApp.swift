@@ -39,6 +39,10 @@ class PasswordsApp {
     /// Passwords' window is tucked behind it while QuickPass works in Passwords. Called on the main thread.
     var hidingSpot: () -> CGRect? = { nil }
 
+    /// When QuickPass last brought Passwords forward behind the scenes, so that isn't taken for the
+    /// user opening it. Main thread only.
+    private(set) var activatedAt = Date.distantPast
+
     /// What the list shows in place of a missing username. Accessibility doesn't mark it as a placeholder.
     private static let noUsernameLabel = appleString("no user name (label)", fallback: "no user name")
     private static let revealPasswordLabel = appleString("Reveal Password", fallback: "Reveal Password")
@@ -76,8 +80,9 @@ class PasswordsApp {
             fillBlankRows()
             logins = rows().enumerated().map { login(of: $1, at: $0) }
         }
+        numberCopies(&logins, in: rows())
         guard !logins.isEmpty, let withCodes = loginsWithCodes() else { return nil }
-        for i in logins.indices where withCodes.contains(logins[i]) { logins[i].hasCode = true }
+        for i in logins.indices where withCodes.contains(where: { $0.sameName(as: logins[i]) }) { logins[i].hasCode = true }
         return logins
     }
 
@@ -91,7 +96,11 @@ class PasswordsApp {
         if start == 0 { shownTile = nil }
         show("AllTile")
         var rows = rows()
-        func piece() -> [Login] { rows.indices.dropFirst(start).prefix(max).map { login(of: rows[$0], at: $0) } }
+        func piece() -> [Login] {
+            var logins = rows.indices.dropFirst(start).prefix(max).map { login(of: rows[$0], at: $0) }
+            numberCopies(&logins, in: rows)
+            return logins
+        }
         var logins = piece()
         // An empty read means the list hadn't drawn yet.
         guard !rows.isEmpty else { return nil }
@@ -146,11 +155,13 @@ class PasswordsApp {
         var rowsByLogin: [Login: AXUIElement]?
         func row(for login: Login) -> AXUIElement? {
             let rows = rows()
-            if rows.indices.contains(login.index), self.login(of: rows[login.index], at: login.index) == login {
+            if rows.indices.contains(login.index), isRow(login.index, of: rows, login) {
                 return rows[login.index]
             }
             if rowsByLogin == nil {
-                rowsByLogin = Dictionary(rows.enumerated().map { (self.login(of: $1, at: $0), $1) }, uniquingKeysWith: { first, _ in first })
+                var all = rows.enumerated().map { self.login(of: $1, at: $0) }
+                numberCopies(&all, in: rows)
+                rowsByLogin = Dictionary(zip(all, rows), uniquingKeysWith: { first, _ in first })
             }
             return rowsByLogin?[login]
         }
@@ -333,7 +344,12 @@ class PasswordsApp {
             throw PasswordsError.notSureWhichLogin
         }
         guard let at = find(login)?.index else { throw PasswordsError.notFound }
-        let count = rows().count
+        // Identical logins only differ by password, so nothing here shows which one is selected.
+        let listed = rows()
+        if [at - 1, at + 1].contains(where: { listed.indices.contains($0) && self.login(of: listed[$0], at: $0).sameName(as: login) }) {
+            throw PasswordsError.notSureWhichLogin
+        }
+        let count = listed.count
         try whileActive {
             // Delete only applies to the list's selection, and stays disabled while the search
             // field has focus.
@@ -569,24 +585,45 @@ class PasswordsApp {
         guard list() != nil else { throw PasswordsError.locked }
         clearSearch()
         show("AllTile")
-        var row = find(login)?.row
-        if row == nil {
+        var found = find(login)
+        if found == nil {
             shownTile = nil
             show("AllTile")
             fillBlankRows()
-            row = find(login)?.row
+            found = find(login)
         }
-        guard let row, let list = list() else { throw PasswordsError.notFound }
-        AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [row] as CFArray)
+        guard let found, let list = list() else { throw PasswordsError.notFound }
+        let others = sameTitleUsernames(as: login, around: found.index)
+        AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [found.row] as CFArray)
         // The list can show an account's display name where the detail pane shows the username,
-        // so only the title is compared. The short wait keeps a previous login with the same title
-        // from passing for this one before the pane updates.
+        // so the username can't be required to match. A pane still showing another login with the
+        // same title is turned away by its username, since the title alone would pass it.
         usleep(150_000)
         for _ in 0..<40 {
-            if let window = windows().first(where: { field("TitleField", in: $0) == login.title }) { return window }
+            if let window = windows().first(where: {
+                field("TitleField", in: $0) == login.title && field("UserNameField", in: $0).map(others.contains) != true
+            }) { return window }
             usleep(25_000)
         }
         throw PasswordsError.notFound
+    }
+
+    /// Usernames of the other logins titled like this one. The list is sorted by title, so they
+    /// sit next to its row.
+    private func sameTitleUsernames(as login: Login, around index: Int) -> Set<String> {
+        let rows = rows()
+        var names: Set<String> = []
+        for step in [-1, 1] {
+            var i = index + step
+            while rows.indices.contains(i) {
+                let other = self.login(of: rows[i], at: i)
+                guard other.title == login.title else { break }
+                names.insert(other.username)
+                i += step
+            }
+        }
+        names.remove(login.username)
+        return names
     }
 
     /// The login's row and row number. Adding or removing a login moves the rows below it, usually
@@ -595,8 +632,32 @@ class PasswordsApp {
         let rows = rows()
         let index = rows.indices
             .sorted { abs($0 - login.index) < abs($1 - login.index) }
-            .first { self.login(of: rows[$0], at: $0) == login }
+            .first { isRow($0, of: rows, login) }
         return index.map { (rows[$0], $0) }
+    }
+
+    /// Whether the row at `index` is `login`, counting identical rows above it for the copy.
+    private func isRow(_ index: Int, of rows: [AXUIElement], _ login: Login) -> Bool {
+        self.login(of: rows[index], at: index).sameName(as: login) && copyNumber(at: index, in: rows) == login.copy
+    }
+
+    private func copyNumber(at index: Int, in rows: [AXUIElement]) -> Int {
+        let here = login(of: rows[index], at: index)
+        var copy = 0
+        while index - copy > 0, login(of: rows[index - copy - 1], at: 0).sameName(as: here) { copy += 1 }
+        return copy
+    }
+
+    /// Numbers identical logins in `logins`, which are consecutive rows of `rows`. The first may
+    /// continue a run from the rows above it.
+    private func numberCopies(_ logins: inout [Login], in rows: [AXUIElement]) {
+        for i in logins.indices {
+            if i == 0 {
+                logins[0].copy = rows.indices.contains(logins[0].index) ? copyNumber(at: logins[0].index, in: rows) : 0
+            } else if logins[i].sameName(as: logins[i - 1]) {
+                logins[i].copy = logins[i - 1].copy + 1
+            }
+        }
     }
 
     /// Rows in the All list read [title, username].
@@ -659,7 +720,7 @@ class PasswordsApp {
         }
         DispatchQueue.main.sync { _ = app.unhide() }
         park(parked, behind: spot)
-        DispatchQueue.main.sync { _ = app.activate() }
+        DispatchQueue.main.sync { activatedAt = Date(); _ = app.activate() }
         // Activation can pull windows back into view, so keep placing them until it settles.
         for _ in 0..<100 {
             park(parked, behind: spot)

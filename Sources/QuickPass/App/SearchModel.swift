@@ -91,6 +91,12 @@ final class SearchModel: ObservableObject {
         self.passwords = passwords
         self.persists = persists
         usage = persists ? UserDefaults.standard.dictionary(forKey: Self.usageKey) as? [String: Int] ?? [:] : [:]
+        // Opening Passwords yourself is how logins get edited, so values read before can't be trusted.
+        _ = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let self, !self.usingPasswords, Date().timeIntervalSince(self.passwords.activatedAt) > 2,
+                  (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == PasswordsApp.bundleID else { return }
+            self.forget()
+        }
         guard persists else { return }
         if let data = try? Data(contentsOf: Self.cacheURL), let saved = try? JSONDecoder().decode([Login].self, from: data) {
             logins = saved
@@ -267,8 +273,12 @@ final class SearchModel: ObservableObject {
 
     /// Rows in the detail view: the fields, then the actions.
     func items(for login: Login) -> [DetailItem] {
-        fields(for: login).map(DetailItem.field) + [.fill] + (login.hasCode ? [.fillCode] : []) + [.openInPasswords, .delete]
+        fields(for: login).map(DetailItem.field) + [.fill] + (login.hasCode ? [.fillCode] : []) + [.openInPasswords]
+            + (canDelete(login) ? [.delete] : [])
     }
+
+    /// Identical logins only differ by password, so QuickPass can't confirm which one it would delete.
+    func canDelete(_ login: Login) -> Bool { !logins.contains { $0.sameName(as: login) && $0.copy != login.copy } }
 
     /// The highlighted row in the detail view.
     var selectedItem: DetailItem? {
@@ -313,6 +323,8 @@ final class SearchModel: ObservableObject {
                 self.usingPasswords = false
                 switch result {
                 case .success:
+                    // A new login can take the title and username of one read earlier.
+                    self.forget()
                     self.putOnClipboard(draft.password, secret: true)
                     self.newLogin = nil
                     done(true)
@@ -381,6 +393,8 @@ final class SearchModel: ObservableObject {
                     done(false)
                 } else {
                     self.recordUse(of: login)
+                    // The user is about to work in Passwords and may change what was read.
+                    self.forget()
                     done(true)
                 }
             }
@@ -566,7 +580,7 @@ final class SearchModel: ObservableObject {
         }
         guard let withCodes = passwords.loginsWithCodes() else { return endReload() }
         var fresh = reloadRead
-        for i in fresh.indices where withCodes.contains(fresh[i]) { fresh[i].hasCode = true }
+        for i in fresh.indices where withCodes.contains(where: { $0.sameName(as: fresh[i]) }) { fresh[i].hasCode = true }
         reloadRead = []
         lastLoaded = Date()
         DispatchQueue.main.async { self.update(fresh) }

@@ -413,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             openWebsite()
         case (kVK_ANSI_O, [.command, .shift]) where model.selectedLogin != nil:
             openInPasswords()
-        case (kVK_Delete, [.command]) where model.detail:
+        case (kVK_Delete, [.command]) where model.detail && model.selectedLogin.map(model.canDelete) == true:
             model.confirmingDelete = true
         case (kVK_ANSI_G, [.command]):
             generatePassword()
